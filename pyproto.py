@@ -5,6 +5,12 @@ import collections
 from bitstring import ConstBitStream
 
 
+try:
+  basestring
+except NameError:
+  basestring = str
+
+
 class Message(collections.OrderedDict):
     def __init__(self, name=None, *args, **kwargs):
         super(Message, self).__init__(*args, **kwargs)

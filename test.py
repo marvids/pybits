@@ -15,18 +15,18 @@ class TestBitProtocolParser(unittest.TestCase):
 
     def testChoice(self):
         msg = Choice(4, {4: Sequence(Bits('f1', 4)), 5: Sequence(Bits('f2', 4))})
-        self.assertEqual(json.dumps(msg.unserialize('0x48')), '{"f1": 8}')
-        self.assertEqual(json.dumps(msg.unserialize('0x52')), '{"f2": 2}')
+        self.unserialize(msg, '0x48', '{"f1": 8}')
+        self.unserialize(msg, '0x52', '{"f2": 2}')
 
     def testRepeat(self):
         msg = Repeat(Sequence(Bits('f1', 4)))
-        self.assertEqual(json.dumps(msg.unserialize('0x48')), '[{"f1": 4}, {"f1": 8}]')
+        self.unserialize(msg, '0x48', '[{"f1": 4}, {"f1": 8}]')
 
     def testConcatSequences(self):
         msg1 = Sequence(Bits('f1', 4))
         msg2 = Sequence(Bits('f2', 4))
         msg = msg1 + msg2
-        self.assertEqual(json.dumps(msg.unserialize('0x87')), '{"f1": 8, "f2": 7}')
+        self.unserialize(msg, '0x87', '{"f1": 8, "f2": 7}')
 
     def testConverterArgs(self):
         def convert(value, factor, offset):
@@ -53,7 +53,9 @@ class TestBitProtocolParser(unittest.TestCase):
                                         7: Sequence(Bits('a3', 4), Bits('a4', 4))})
                 )
             )
-        self.assertEqual(json.dumps(msg.unserialize('0x11ff265434726')), '{"f1": 17, "f2": {"g1": 2}, "f3": [{"a1": 84, "a2": 52}, {"a3": 2, "a4": 6}]}')
+        self.unserialize(msg,
+                '0x11ff265434726',
+                '{"f1": 17, "f2": {"g1": 2}, "f3": [{"a1": 84, "a2": 52}, {"a3": 2, "a4": 6}]}')
 
     def unserialize(self, msg, data, expected):
         self.assertEqual(json.dumps(msg.unserialize(data)), expected)
