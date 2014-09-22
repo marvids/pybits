@@ -23,7 +23,7 @@ class Message(collections.OrderedDict):
         return s + json.dumps(self, indent=4)
 
 
-class Token:
+class Field:
     def __init__(self, *args, **kwargs):
         args, kwargs = self.__handleOptionalName(args, kwargs)
         self.init(*args, **kwargs)
@@ -49,7 +49,7 @@ class Token:
         return self.parse(ConstBitStream(data))
 
 
-class Sequence(Token):
+class Sequence(Field):
     def init(self, *tokens):
         self.tokens = tokens
 
@@ -69,21 +69,21 @@ class Sequence(Token):
         return Sequence(*tokens)
 
 
-class Choice(Token):
-    def init(self, fmt, selector):
+class Choice(Field):
+    def init(self, fmt, alternatives):
         self.token = Bits(fmt)
-        self.selector = selector
+        self.alternatives = alternatives
 
     def parse(self, stream):
         select = self.token.parse(stream)
-        token = self.selector[select]
+        token = self.alternatives[select]
         value = token.parse(stream)
         if token.name:
             return Message(self.name, {token.name: value})
         return value
 
 
-class Repeat(Token):
+class Repeat(Field):
     def init(self, sequence):
         self.sequence = sequence
 
@@ -94,7 +94,7 @@ class Repeat(Token):
         return l
 
 
-class Bits(Token):
+class Bits(Field):
     converter = None
     def init(self, fmt, converter=None, *args, **kwargs):
         if isinstance(fmt, int):
@@ -129,8 +129,14 @@ class Pad(Bits):
         Bits.parse(self, stream)
 
 
-class Integer(Bits):
+class Uint(Bits):
     pass
+
+
+class Int(Bits):
+    def init(self, size, *args, **kwargs):
+        fmt = 'int:{}'.format(size)
+        Bits.init(self, fmt, *args, **kwargs)
 
 
 class Unit:

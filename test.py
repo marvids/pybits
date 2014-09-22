@@ -44,6 +44,14 @@ class TestBitProtocolParser(unittest.TestCase):
         self.unserialize(msg, '0x02', '{"flag": "TRUE"}')
         self.unserialize(msg, '0x01', '{"flag": "FALSE"}')
 
+    def testUint(self):
+        msg = Uint(8)
+        self.unserialize(msg, '0xff', '255')
+
+    def testInt(self):
+        msg = Int(8)
+        self.unserialize(msg, '0xff', '-1')
+
     def testComposite(self):
         msg = Sequence(
                 Bits('f1', 8),
