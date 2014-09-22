@@ -28,13 +28,21 @@ class TestBitProtocolParser(unittest.TestCase):
         msg = msg1 + msg2
         self.assertEqual(json.dumps(msg.unserialize('0x87')), '{"f1": 8, "f2": 7}')
 
-    #def testEnumDict(self):
-    #    msg = Enum('flag', 1, {0: 'FALSE', 1: 'TRUE'})
-    #    self.unserialize(msg, '0x80', '{"flag": 'TRUE'}')
-    #    self.unserialize(msg, '0x00', '{"flag": 'FALSE'}')
+    def testConverterArgs(self):
+        def convert(value, factor, offset):
+            return value*factor + offset
+        msg = Sequence(Bits('f1', 8, convert, 10, 5))
+        self.unserialize(msg, '0x05', '{"f1": 55}')
 
-    #def testEnumTuple(self):
-    #    msg = Enum(2, ('FALSE', 'TRUE'), offset=1)
+    def testEnumDict(self):
+        msg = Sequence(Enum('flag', 1, {0: 'FALSE', 1: 'TRUE'}))
+        self.unserialize(msg, '0x80', '{"flag": "TRUE"}')
+        self.unserialize(msg, '0x00', '{"flag": "FALSE"}')
+
+    def testEnumTuple(self):
+        msg = Sequence(Enum('flag', 8, ('FALSE', 'TRUE'), offset=1))
+        self.unserialize(msg, '0x02', '{"flag": "TRUE"}')
+        self.unserialize(msg, '0x01', '{"flag": "FALSE"}')
 
     def testComposite(self):
         msg = Sequence(

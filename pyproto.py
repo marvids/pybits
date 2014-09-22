@@ -64,8 +64,8 @@ class Sequence(Token):
 
 
 class Choice(Token):
-    def init(self, size, selector):
-        self.token = Bits(size)
+    def init(self, fmt, selector):
+        self.token = Bits(fmt)
         self.selector = selector
 
     def parse(self, stream):
@@ -90,19 +90,29 @@ class Repeat(Token):
 
 class Bits(Token):
     converter = None
-    def init(self, fmt, converter=None):
+    def init(self, fmt, converter=None, *args, **kwargs):
         if isinstance(fmt, int):
             self.fmt = str(fmt)
         else:
             self.fmt = fmt
+
         self.converter = converter
+        self.converter_args = args
+        self.converter_kwargs = kwargs
 
     def parse(self, stream):
         val = stream.read(self.fmt)
         if self.converter:
-            return self.converter(val)
+            return self.converter(val, *self.converter_args, **self.converter_kwargs)
         else:
             return val
+
+
+class Enum(Bits):
+    def init(self, fmt, enum, offset=0):
+        def convertToEnum(value, enum, offset):
+            return enum[value-offset]
+        Bits.init(self, fmt, convertToEnum, enum, offset)
 
 
 class Pad(Bits):
