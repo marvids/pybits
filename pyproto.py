@@ -4,7 +4,11 @@ import collections
 from bitstring import ConstBitStream
 
 
-class Sequence:
+class Token:
+    def unserialize(self, data):
+        return self.parse(ConstBitStream(data))
+
+class Sequence(Token):
     def __init__(self, *args):
         self.args = args
 
@@ -21,7 +25,7 @@ class Sequence:
         return Sequence(*args)
 
 
-class Choice:
+class Choice(Token):
     def __init__(self, size, selector):
         self.token = Bits(size)
         self.selector = selector
@@ -31,7 +35,7 @@ class Choice:
         return self.selector[value].parse(stream)
 
 
-class Repeat:
+class Repeat(Token):
     def __init__(self, sequence):
         self.sequence = sequence
 
@@ -42,7 +46,7 @@ class Repeat:
         return l
 
 
-class Bits:
+class Bits(Token):
     def __init__(self, fmt, converter=None):
         if isinstance(fmt, int):
             self.fmt = str(fmt)

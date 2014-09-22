@@ -40,7 +40,7 @@ class TestBitProtocolParser(unittest.TestCase):
                                    7: Sequence(('a3', Bits(4)), ('a4', Bits(4)))})
                     ))
             )
-        self.assertEqual(json.dumps(msg.unserialize('0x11ff265434726')), '{"f1": 8, "f2": 7}')
+        self.assertEqual(json.dumps(msg.unserialize('0x11ff265434726')), '{"f1": 17, "f2": {"g1": 2}, "f3": [{"a1": 84, "a2": 52}, {"a3": 2, "a4": 6}]}')
 
     def unserialize(self, msg, data, expected):
         self.assertEqual(json.dumps(msg.unserialize(data)), expected)
