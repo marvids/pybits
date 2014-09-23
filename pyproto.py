@@ -5,15 +5,16 @@ import collections
 from bitstring import ConstBitStream
 
 
+# Python 3.x compatibility
 try:
   basestring
 except NameError:
   basestring = str
 
 
-class Message(collections.OrderedDict):
+class Field(collections.OrderedDict):
     def __init__(self, name=None, *args, **kwargs):
-        super(Message, self).__init__(*args, **kwargs)
+        super(Field, self).__init__(*args, **kwargs)
         self.name = name
 
     def __str__(self):
@@ -23,7 +24,7 @@ class Message(collections.OrderedDict):
         return s + json.dumps(self, indent=4)
 
 
-class Field:
+class FieldParser:
     def __init__(self, *args, **kwargs):
         args, kwargs = self.__handleOptionalName(args, kwargs)
         self.init(*args, **kwargs)
@@ -42,20 +43,18 @@ class Field:
     def __call__(self, name):
         self.name = name
 
-    def init(self):
-        pass
+    def init(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
 
     def unserialize(self, data):
         return self.parse(ConstBitStream(data))
 
 
-class Sequence(Field):
-    def init(self, *tokens):
-        self.tokens = tokens
-
+class Sequence(FieldParser):
     def parse(self, stream):
-        message = Message(self.name)
-        for token in self.tokens:
+        message = Field(self.name)
+        for token in self.args:
             value = token.parse(stream)
             if token.name:
                 message[token.name] = value
@@ -69,7 +68,7 @@ class Sequence(Field):
         return Sequence(*tokens)
 
 
-class Choice(Field):
+class Choice(FieldParser):
     def init(self, fmt, alternatives):
         self.token = Bits(fmt)
         self.alternatives = alternatives
@@ -79,11 +78,11 @@ class Choice(Field):
         token = self.alternatives[select]
         value = token.parse(stream)
         if token.name:
-            return Message(self.name, {token.name: value})
+            return Field(self.name, {token.name: value})
         return value
 
 
-class Repeat(Field):
+class Repeat(FieldParser):
     def init(self, sequence):
         self.sequence = sequence
 
@@ -94,7 +93,7 @@ class Repeat(Field):
         return l
 
 
-class Bits(Field):
+class Bits(FieldParser):
     converter = None
     def init(self, fmt, converter=None, *args, **kwargs):
         if isinstance(fmt, int):
@@ -135,7 +134,7 @@ class Enum(Bits):
 
 class Pad(Bits):
     def init(self, size):
-        self.fmt = str(size)
+        Bits.init(self, size)
 
     def parse(self, stream):
         Bits.parse(self, stream)
@@ -149,6 +148,11 @@ class Int(Bits):
     def init(self, size, *args, **kwargs):
         fmt = 'int:{}'.format(size)
         Bits.init(self, fmt, *args, **kwargs)
+
+
+class Bool(Enum):
+    def init(self, size=1, *args, **kwargs):
+       Enum.init(self, size, ('FALSE', 'TRUE'), *args, **kwargs)
 
 
 class Unit:
