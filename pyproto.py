@@ -117,7 +117,19 @@ class Bits(Field):
 class Enum(Bits):
     def init(self, fmt, enum, offset=0):
         def convertToEnum(value, enum, offset):
-            return enum[value-offset]
+            def isUndefined(index, enum):
+                if isinstance(enum, dict) and index not in enum:
+                    return True
+                if index >= len(enum) or index < 0:
+                    return True
+                return False
+
+            index = value - offset
+            if isUndefined(index, enum):
+                result = '_UNDEFINED_({})'.format(value)
+            else:
+                result = enum[index]
+            return result
         Bits.init(self, fmt, convertToEnum, enum, offset)
 
 
