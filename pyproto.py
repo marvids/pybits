@@ -64,7 +64,7 @@ class Sequence(FieldParser):
 
 
     def __add__(self, other):
-        tokens = self.tokens + other.tokens
+        tokens = self.args + other.args
         return Sequence(*tokens)
 
 
