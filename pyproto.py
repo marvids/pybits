@@ -152,7 +152,7 @@ class Int(Bits):
 
 class Bool(Enum):
     def init(self, size=1, *args, **kwargs):
-       Enum.init(self, size, ('FALSE', 'TRUE'), *args, **kwargs)
+       Enum.init(self, size, (False, True), *args, **kwargs)
 
 
 class Unit:

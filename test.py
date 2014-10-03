@@ -52,6 +52,11 @@ class TestBitProtocolParser(unittest.TestCase):
         msg = Int(8)
         self.unserialize(msg, '0xff', '-1')
 
+    def testBool(self):
+        msg = Bool()
+        self.unserialize(msg, '0x80', 'true')
+        self.unserialize(msg, '0x00', 'false')
+
     def testComposite(self):
         msg = Sequence(
                 Bits('f1', 8),
