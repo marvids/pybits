@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import copy
 import json
 import collections
 from bitstring import ConstBitStream
@@ -25,23 +26,14 @@ class Field(collections.OrderedDict):
 
 
 class FieldParser:
-    def __init__(self, *args, **kwargs):
-        args, kwargs = self.__handleOptionalName(args, kwargs)
+    def __init__(self, name, *args, **kwargs):
+        self.name = name
         self.init(*args, **kwargs)
 
-    def __handleOptionalName(self, args, kwargs):
-        if len(args) > 0 and isinstance(args[0], basestring):
-            self.name = args[0]
-            args = args[1:]
-        elif 'name' in kwargs:
-            self.name = kwargs['name']
-            del kwargs['name']
-        else:
-            self.name = None
-        return args, kwargs
-
     def __call__(self, name):
-        self.name = name
+        c = copy.copy(self)
+        c.name = name
+        return c
 
     def init(self, *args, **kwargs):
         self.args = args
@@ -65,12 +57,12 @@ class Sequence(FieldParser):
 
     def __add__(self, other):
         tokens = self.args + other.args
-        return Sequence(*tokens)
+        return Sequence(None, *tokens)
 
 
 class Choice(FieldParser):
     def init(self, fmt, alternatives):
-        self.token = Bits(fmt)
+        self.token = Bits(self.name, fmt)
         self.alternatives = alternatives
 
     def parse(self, stream):
