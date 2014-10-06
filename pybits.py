@@ -18,6 +18,11 @@ class Field(collections.OrderedDict):
         super(Field, self).__init__(*args, **kwargs)
         self.name = name
 
+    def __getattr__(self, name):
+        if name in self:
+            return self[name]
+        raise AttributeError
+
     def __str__(self):
         s = ''
         if self.name:
@@ -68,9 +73,12 @@ class Choice(FieldParser):
     def parse(self, stream):
         select = self.token.parse(stream)
         token = self.alternatives[select]
-        value = token.parse(stream)
-        if token.name:
-            return Field(self.name, {token.name: value})
+        try:
+            value = token.parse(stream)
+            if token.name:
+                return Field(self.name, {token.name: value})
+        except AttributeError:
+            value = token
         return value
 
 
@@ -105,6 +113,14 @@ class Bits(FieldParser):
             return val
 
 
+class Pad(Bits):
+    def __init__(self, size):
+        Bits.__init__(self, None, size)
+
+    def parse(self, stream):
+        Bits.parse(self, stream)
+
+
 class Enum(Bits):
     def init(self, fmt, enum, offset=0):
         def convertToEnum(value, enum, offset):
@@ -122,14 +138,6 @@ class Enum(Bits):
                 result = enum[index]
             return result
         Bits.init(self, fmt, convertToEnum, enum, offset)
-
-
-class Pad(Bits):
-    def init(self, size):
-        Bits.init(self, size)
-
-    def parse(self, stream):
-        Bits.parse(self, stream)
 
 
 class Uint(Bits):
@@ -151,6 +159,9 @@ class Unit:
     factor = 1
     constant = 0
     unit = ''
+    invalid = None
 
     def __str__(self):
+        if self == self.invalid:
+            return '\"INVALID ({})\"'.format(self.invalid)
         return '\"{} {}\"'.format(self.factor*self + self.constant, self.unit)
