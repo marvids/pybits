@@ -75,6 +75,25 @@ class TestBitProtocolParser(unittest.TestCase):
         data = msg.unserialize('0x34')
         self.assertEqual(data.f1, 3)
 
+    def testHierarchy(self):
+        msg = Sequence(None, Sequence('child1', Bits('b', 4)), Sequence('child2', Bits('b', 4)))
+        data = msg.unserialize('0x34')
+        self.assertEqual(data.child1.parent.child2.b, 4)
+
+    def testChoiceSiblingReference(self):
+        msg = Sequence(None, Bits('selection', 8), Choice(None, Ref('selection'), {2: Bits('b', 8), 4: Bits('c', 4)}))
+        self.unserialize(msg, '0x0234', '{"selection": 2, "b": 52}')
+        self.unserialize(msg, '0x0434', '{"selection": 4, "c": 3}')
+
+    def testChoiceParentReference(self):
+        msg = Sequence(None,
+                Sequence('other', Bits('selection', 8)),
+                Sequence(None,
+                        Choice(None, Ref('../other/selection'), {2: Bits('b', 8), 4: Bits('c', 4)})
+                    )
+                )
+        self.unserialize(msg, '0x0234', '{"selection": 2, "b": 52}')
+
     def unserialize(self, msg, data, expected):
         self.assertEqual(json.dumps(msg.unserialize(data)), expected)
 

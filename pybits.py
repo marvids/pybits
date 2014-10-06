@@ -13,21 +13,36 @@ except NameError:
   basestring = str
 
 
-class Field(collections.OrderedDict):
-    def __init__(self, name=None, *args, **kwargs):
-        super(Field, self).__init__(*args, **kwargs)
+class Field:
+    def __init__(self, name=None, parent=None):
         self.name = name
-
-    def __getattr__(self, name):
-        if name in self:
-            return self[name]
-        raise AttributeError
+        self.parent = parent
 
     def __str__(self):
         s = ''
         if self.name:
             s += self.name + ' = '
         return s + json.dumps(self, indent=4)
+
+    def findRef(self, reference):
+        return self[reference]
+
+
+class DictField(Field, collections.OrderedDict):
+    def __init__(self, name=None, parent=None, *args, **kwargs):
+        Field.__init__(self, name, parent)
+        collections.OrderedDict.__init__(self, *args, **kwargs)
+
+    def __getattr__(self, name):
+        if name in self:
+            return self[name]
+        raise AttributeError
+
+
+class ListField(Field, list):
+    def __init__(self, name=None, *args, **kwargs):
+        Field.__init__(self, name)
+        list.__init__(self, *args, **kwargs)
 
 
 class FieldParser:
@@ -45,14 +60,17 @@ class FieldParser:
         self.kwargs = kwargs
 
     def unserialize(self, data):
-        return self.parse(ConstBitStream(data))
+        return self.parse(ConstBitStream(data), None)
 
+
+class Ref(str):
+    pass
 
 class Sequence(FieldParser):
-    def parse(self, stream):
-        message = Field(self.name)
+    def parse(self, stream, parent):
+        message = DictField(self.name, parent)
         for token in self.args:
-            value = token.parse(stream)
+            value = token.parse(stream, message)
             if token.name:
                 message[token.name] = value
             elif value:
@@ -67,16 +85,23 @@ class Sequence(FieldParser):
 
 class Choice(FieldParser):
     def init(self, fmt, alternatives):
-        self.token = Bits(self.name, fmt)
+        if isinstance(fmt, Ref):
+            self.reference = fmt
+        else:
+            self.token = Bits(self.name, fmt)
         self.alternatives = alternatives
 
-    def parse(self, stream):
-        select = self.token.parse(stream)
+    def parse(self, stream, parent):
+        try:
+            select = self.token.parse(stream, parent)
+        except AttributeError:
+            select = parent.findRef(self.reference)
+
         token = self.alternatives[select]
         try:
-            value = token.parse(stream)
+            value = token.parse(stream, parent)
             if token.name:
-                return Field(self.name, {token.name: value})
+                return DictField(self.name, parent, {token.name: value})
         except AttributeError:
             value = token
         return value
@@ -86,10 +111,10 @@ class Repeat(FieldParser):
     def init(self, sequence):
         self.sequence = sequence
 
-    def parse(self, stream):
-        l = []
+    def parse(self, stream, parent):
+        l = ListField()
         while stream.pos < stream.len:
-            l.append(self.sequence.parse(stream))
+            l.append(self.sequence.parse(stream, l))
         return l
 
 
@@ -105,7 +130,7 @@ class Bits(FieldParser):
         self.converter_args = args
         self.converter_kwargs = kwargs
 
-    def parse(self, stream):
+    def parse(self, stream, parent):
         val = stream.read(self.fmt)
         if self.converter:
             return self.converter(val, *self.converter_args, **self.converter_kwargs)
@@ -117,8 +142,8 @@ class Pad(Bits):
     def __init__(self, size):
         Bits.__init__(self, None, size)
 
-    def parse(self, stream):
-        Bits.parse(self, stream)
+    def parse(self, stream, parent):
+        Bits.parse(self, stream, parent)
 
 
 class Enum(Bits):
