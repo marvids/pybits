@@ -2,7 +2,7 @@
 
 import unittest
 import json
-from pyproto import *
+from pybits import *
 
 class TestBitProtocolParser(unittest.TestCase):
     def testSequence(self):
