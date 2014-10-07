@@ -61,7 +61,7 @@ class FieldParser:
             args = args[1:]
         self.init(*args, **kwargs)
 
-    def __call__(self, name):
+    def __call__(self, name=None):
         c = copy.copy(self)
         c.name = name
         return c
@@ -72,6 +72,9 @@ class FieldParser:
 
     def unserialize(self, data):
         return self.parse(ConstBitStream(data), None)
+
+    def debug(self, stream):
+        print('{}({})\n\t{}'.format(self.__class__.__name__, self.name, stream[stream.pos:]))
 
 
 class Sequence(FieldParser):
@@ -95,18 +98,19 @@ class Sequence(FieldParser):
 
 class Choice(FieldParser):
     def init(self, selector, alternatives):
-        if isinstance(selector, Ref):
-            self.reference = selector.s
-        else:
-            self.selector = Bits(self.name, selector)
+        selectorMap = {Ref: lambda s, p: p.findRef(self.selector.s)}
+
+        try:
+            self.getSelector = selectorMap[selector.__class__]
+        except KeyError:
+            self.getSelector = lambda s, p: Bits(self.name, self.selector).parse(s, p)
+
         self.alternatives= alternatives
+        self.selector = selector
+
 
     def parse(self, stream, parent):
-        try:
-            select = self.selector.parse(stream, parent)
-        except AttributeError:
-            select = parent.findRef(self.reference)
-
+        select = self.getSelector(stream, parent)
         token = self.alternatives[select]
         try:
             value = token.parse(stream, parent)
@@ -119,28 +123,19 @@ class Choice(FieldParser):
 
 class Repeat(FieldParser):
     def init(self, *args):
-        if isinstance(args[0], Fmt):
-            self.nField = Bits(self.name, args[0])
-            args = args[1:]
-        elif isinstance(args[0], int):
+        nMap = {Fmt: lambda s, p: Bits(self.name, self.n).parse(s, p),
+                int: lambda s, p: self.n,
+                Ref: lambda s, p: p.findRef(self.n.s)}
+        try:
+            self.getNumberOfItems = nMap[args[0].__class__]
             self.n = args[0]
             args = args[1:]
-        elif isinstance(args[0], Ref):
-            self.reference = args[0].s
-            args = args[1:]
+        except KeyError:
+            self.getNumberOfItems = lambda stream, parent: -1
         self.sequence = args[0]
 
     def parse(self, stream, parent):
-        try:
-            n = self.n
-        except AttributeError:
-            try:
-                n = parent.findRef(self.reference)
-            except AttributeError:
-                try:
-                    n = self.nField.parse(stream, parent)
-                except:
-                    n = -1
+        n = self.getNumberOfItems(stream, parent)
         l = ListField()
         while stream.pos < stream.len and n != 0:
             l.append(self.sequence.parse(stream, l))
