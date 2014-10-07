@@ -13,19 +13,6 @@ except NameError:
   basestring = str
 
 
-class StrArg:
-    def __init__(self, s):
-        self.s = str(s)
-
-
-class Ref(StrArg):
-    pass
-
-
-class Fmt(StrArg):
-    pass
-
-
 class Field:
     def __init__(self, name=None, parent=None):
         self.name = name
@@ -131,13 +118,33 @@ class Choice(FieldParser):
 
 
 class Repeat(FieldParser):
-    def init(self, sequence):
-        self.sequence = sequence
+    def init(self, *args):
+        if isinstance(args[0], Fmt):
+            self.nField = Bits(self.name, args[0])
+            args = args[1:]
+        elif isinstance(args[0], int):
+            self.n = args[0]
+            args = args[1:]
+        elif isinstance(args[0], Ref):
+            self.reference = args[0].s
+            args = args[1:]
+        self.sequence = args[0]
 
     def parse(self, stream, parent):
+        try:
+            n = self.n
+        except AttributeError:
+            try:
+                n = parent.findRef(self.reference)
+            except AttributeError:
+                try:
+                    n = self.nField.parse(stream, parent)
+                except:
+                    n = -1
         l = ListField()
-        while stream.pos < stream.len:
+        while stream.pos < stream.len and n != 0:
             l.append(self.sequence.parse(stream, l))
+            n -= 1
         return l
 
 
@@ -158,6 +165,19 @@ class Bits(FieldParser):
             return self.converter(val, *self.converter_args, **self.converter_kwargs)
         else:
             return val
+
+
+class StrArg:
+    def __init__(self, s):
+        self.s = str(s)
+
+
+class Ref(StrArg):
+    pass
+
+
+class Fmt(StrArg):
+    pass
 
 
 class Pad(Bits):

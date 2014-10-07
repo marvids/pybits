@@ -18,9 +18,35 @@ class TestBits(unittest.TestCase):
         self.unserialize(msg, '0x48', '{"f1": 8}')
         self.unserialize(msg, '0x52', '{"f2": 2}')
 
-    def testRepeat(self):
+    def testChoiceSiblingReference(self):
+        msg = Sequence(Bits('selection', 8), Choice(Ref('selection'), {2: Bits('b', 8), 4: Bits('c', 4)}))
+        self.unserialize(msg, '0x0234', '{"selection": 2, "b": 52}')
+        self.unserialize(msg, '0x0434', '{"selection": 4, "c": 3}')
+
+    def testChoiceParentReference(self):
+        msg = Sequence(None,
+                Sequence('other', Bits('selection', 8)),
+                Sequence(None,
+                        Choice(Ref('../other/selection'), {2: Bits('b', 8), 4: Bits('c', 4)})
+                    )
+                )
+        self.unserialize(msg, '0x0234', '{"other": {"selection": 2}, "b": 52}')
+
+    def testRepeatForever(self):
         msg = Repeat(Sequence(Bits('f1', 4)))
-        self.unserialize(msg, '0x48', '[{"f1": 4}, {"f1": 8}]')
+        self.unserialize(msg, '0x483', '[{"f1": 4}, {"f1": 8}, {"f1": 3}]')
+
+    def testRepeatParseNumberOfTimes(self):
+        msg = Repeat(Fmt(8), Sequence(Bits('f1', 4)))
+        self.unserialize(msg, '0x02483', '[{"f1": 4}, {"f1": 8}]')
+
+    def testRepeatNumberOfTimes(self):
+        msg = Repeat(2, Sequence(Bits('f1', 4)))
+        self.unserialize(msg, '0x483', '[{"f1": 4}, {"f1": 8}]')
+
+    def testRepeatReference(self):
+        msg = Sequence(Bits('numOfTimes', 4), Repeat('list', Ref('numOfTimes'), Sequence(Bits('f1', 4))))
+        self.unserialize(msg, '0x2483', '{"numOfTimes": 2, "list": [{"f1": 4}, {"f1": 8}]}')
 
     def testConcatSequences(self):
         msg1 = Sequence(Bits('f1', 4))
@@ -58,7 +84,7 @@ class TestBits(unittest.TestCase):
         self.unserialize(msg, '0x00', 'false')
 
     def testComposite(self):
-        msg = Sequence(None,
+        msg = Sequence(
                 Bits('f1', 8),
                 Pad(8),
                 Sequence('f2', Bits('g1', 4)),
@@ -79,20 +105,6 @@ class TestBits(unittest.TestCase):
         msg = Sequence(Sequence('child1', Bits('b', 4)), Sequence('child2', Bits('b', 4)))
         data = msg.unserialize('0x34')
         self.assertEqual(data.child1.parent.child2.b, 4)
-
-    def testChoiceSiblingReference(self):
-        msg = Sequence(Bits('selection', 8), Choice(Ref('selection'), {2: Bits('b', 8), 4: Bits('c', 4)}))
-        self.unserialize(msg, '0x0234', '{"selection": 2, "b": 52}')
-        self.unserialize(msg, '0x0434', '{"selection": 4, "c": 3}')
-
-    def testChoiceParentReference(self):
-        msg = Sequence(None,
-                Sequence('other', Bits('selection', 8)),
-                Sequence(None,
-                        Choice(Ref('../other/selection'), {2: Bits('b', 8), 4: Bits('c', 4)})
-                    )
-                )
-        self.unserialize(msg, '0x0234', '{"other": {"selection": 2}, "b": 52}')
 
     def unserialize(self, msg, data, expected):
         self.assertEqual(json.dumps(msg.unserialize(data)), expected)
