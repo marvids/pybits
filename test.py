@@ -92,7 +92,7 @@ class TestBitProtocolParser(unittest.TestCase):
                         Choice(None, Ref('../other/selection'), {2: Bits('b', 8), 4: Bits('c', 4)})
                     )
                 )
-        self.unserialize(msg, '0x0234', '{"selection": 2, "b": 52}')
+        self.unserialize(msg, '0x0234', '{"other": {"selection": 2}, "b": 52}')
 
     def unserialize(self, msg, data, expected):
         self.assertEqual(json.dumps(msg.unserialize(data)), expected)

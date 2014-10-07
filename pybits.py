@@ -25,7 +25,15 @@ class Field:
         return s + json.dumps(self, indent=4)
 
     def findRef(self, reference):
-        return self[reference]
+        if reference.startswith('../'):
+            return self.parent.findRef(reference[3:])
+        elif reference.startswith('./'):
+            reference = reference[2:]
+        part = reference.partition('/')
+        try:
+            return self[part[0]].findRef(part[2])
+        except AttributeError:
+            return self[part[0]]
 
 
 class DictField(Field, collections.OrderedDict):
