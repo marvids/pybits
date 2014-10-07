@@ -13,6 +13,19 @@ except NameError:
   basestring = str
 
 
+class StrArg:
+    def __init__(self, s):
+        self.s = str(s)
+
+
+class Ref(StrArg):
+    pass
+
+
+class Fmt(StrArg):
+    pass
+
+
 class Field:
     def __init__(self, name=None, parent=None):
         self.name = name
@@ -54,8 +67,11 @@ class ListField(Field, list):
 
 
 class FieldParser:
-    def __init__(self, name, *args, **kwargs):
-        self.name = name
+    def __init__(self, *args, **kwargs):
+        self.name = None
+        if isinstance(args[0], basestring) or not args[0]:
+            self.name = args[0]
+            args = args[1:]
         self.init(*args, **kwargs)
 
     def __call__(self, name):
@@ -71,9 +87,6 @@ class FieldParser:
         return self.parse(ConstBitStream(data), None)
 
 
-class Ref(str):
-    pass
-
 class Sequence(FieldParser):
     def parse(self, stream, parent):
         message = DictField(self.name, parent)
@@ -87,21 +100,23 @@ class Sequence(FieldParser):
 
 
     def __add__(self, other):
-        tokens = self.args + other.args
-        return Sequence(None, *tokens)
+        args = self.args + other.args
+        kwargs = self.kwargs
+        kwargs.update(other.kwargs)
+        return Sequence(*args, **kwargs)
 
 
 class Choice(FieldParser):
-    def init(self, fmt, alternatives):
-        if isinstance(fmt, Ref):
-            self.reference = fmt
+    def init(self, selector, alternatives):
+        if isinstance(selector, Ref):
+            self.reference = selector.s
         else:
-            self.token = Bits(self.name, fmt)
-        self.alternatives = alternatives
+            self.selector = Bits(self.name, selector)
+        self.alternatives= alternatives
 
     def parse(self, stream, parent):
         try:
-            select = self.token.parse(stream, parent)
+            select = self.selector.parse(stream, parent)
         except AttributeError:
             select = parent.findRef(self.reference)
 
@@ -127,10 +142,9 @@ class Repeat(FieldParser):
 
 
 class Bits(FieldParser):
-    converter = None
     def init(self, fmt, converter=None, *args, **kwargs):
-        if isinstance(fmt, int):
-            self.fmt = str(fmt)
+        if not isinstance(fmt, Fmt):
+            self.fmt = Fmt(fmt)
         else:
             self.fmt = fmt
 
@@ -139,7 +153,7 @@ class Bits(FieldParser):
         self.converter_kwargs = kwargs
 
     def parse(self, stream, parent):
-        val = stream.read(self.fmt)
+        val = stream.read(self.fmt.s)
         if self.converter:
             return self.converter(val, *self.converter_args, **self.converter_kwargs)
         else:
@@ -148,7 +162,7 @@ class Bits(FieldParser):
 
 class Pad(Bits):
     def __init__(self, size):
-        Bits.__init__(self, None, size)
+        Bits.__init__(self, size)
 
     def parse(self, stream, parent):
         Bits.parse(self, stream, parent)
@@ -179,7 +193,7 @@ class Uint(Bits):
 
 class Int(Bits):
     def init(self, size, *args, **kwargs):
-        fmt = 'int:{}'.format(size)
+        fmt = Fmt('int:{}'.format(size))
         Bits.init(self, fmt, *args, **kwargs)
 
 
