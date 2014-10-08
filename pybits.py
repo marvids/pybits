@@ -55,12 +55,12 @@ class DictField(Field, collections.OrderedDict):
 
 
 class ListField(Field, list):
-    def __init__(self, name=None, *args, **kwargs):
-        Field.__init__(self, name)
+    def __init__(self, name=None, parent=None, *args, **kwargs):
+        Field.__init__(self, name, parent)
         list.__init__(self, *args, **kwargs)
 
 
-class FieldParser:
+class Token:
     def __init__(self, *args, **kwargs):
         self.name = None
         if isinstance(args[0], basestring) or not args[0]:
@@ -81,7 +81,7 @@ class FieldParser:
         return self.parse(ConstBitStream(data), None)
 
 
-class Sequence(FieldParser):
+class Sequence(Token):
     @debug
     def parse(self, stream, parent):
         message = DictField(self.name, parent)
@@ -101,7 +101,7 @@ class Sequence(FieldParser):
         return Sequence(*args, **kwargs)
 
 
-class Choice(FieldParser):
+class Choice(Token):
     def init(self, selector, alternatives):
         selectorMap = {Ref: lambda s, p: p.findRef(self.selector.s)}
 
@@ -126,7 +126,7 @@ class Choice(FieldParser):
         return value
 
 
-class Repeat(FieldParser):
+class Repeat(Token):
     def init(self, *args):
         nMap = {Fmt: lambda s, p: Bits(self.name, self.n).parse(s, p),
                 int: lambda s, p: self.n,
@@ -149,7 +149,7 @@ class Repeat(FieldParser):
         return l
 
 
-class Bits(FieldParser):
+class Bits(Token):
     def init(self, fmt, converter=None, *args, **kwargs):
         if not isinstance(fmt, Fmt):
             self.fmt = Fmt(fmt)
