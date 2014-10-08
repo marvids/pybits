@@ -13,6 +13,13 @@ except NameError:
   basestring = str
 
 
+def debug(f):
+    def debug_parsing(self, stream, parent):
+        #print('{}({})\n\t{}'.format(self.__class__.__name__, self.name, stream[stream.pos:]))
+        return f(self, stream, parent)
+    return debug_parsing
+
+
 class Field:
     def __init__(self, name=None, parent=None):
         self.name = name
@@ -73,11 +80,9 @@ class FieldParser:
     def unserialize(self, data):
         return self.parse(ConstBitStream(data), None)
 
-    def debug(self, stream):
-        print('{}({})\n\t{}'.format(self.__class__.__name__, self.name, stream[stream.pos:]))
-
 
 class Sequence(FieldParser):
+    @debug
     def parse(self, stream, parent):
         message = DictField(self.name, parent)
         for token in self.args:
@@ -108,7 +113,7 @@ class Choice(FieldParser):
         self.alternatives= alternatives
         self.selector = selector
 
-
+    @debug
     def parse(self, stream, parent):
         select = self.getSelector(stream, parent)
         token = self.alternatives[select]
@@ -132,8 +137,9 @@ class Repeat(FieldParser):
             args = args[1:]
         except KeyError:
             self.getNumberOfItems = lambda stream, parent: -1
-        self.sequence = args[0]
+        self.sequence = Sequence(*args[0:])
 
+    @debug
     def parse(self, stream, parent):
         n = self.getNumberOfItems(stream, parent)
         l = ListField()
@@ -154,6 +160,7 @@ class Bits(FieldParser):
         self.converter_args = args
         self.converter_kwargs = kwargs
 
+    @debug
     def parse(self, stream, parent):
         val = stream.read(self.fmt.s)
         if self.converter:

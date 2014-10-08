@@ -48,6 +48,10 @@ class TestBits(unittest.TestCase):
         msg = Sequence(Bits('numOfTimes', 4), Repeat('list', Ref('numOfTimes'), Sequence(Bits('f1', 4))))
         self.unserialize(msg, '0x2483', '{"numOfTimes": 2, "list": [{"f1": 4}, {"f1": 8}]}')
 
+    def testRepeatSequence(self):
+        msg = Repeat(2, Bits('f1', 4), Bits('f2', 4))
+        self.unserialize(msg, '0x1234', '[{"f1": 1, "f2": 2}, {"f1": 3, "f2": 4}]')
+
     def testConcatSequences(self):
         msg1 = Sequence(Bits('f1', 4))
         msg2 = Sequence(Bits('f2', 4))
