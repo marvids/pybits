@@ -53,6 +53,9 @@ class DictField(Field, collections.OrderedDict):
             return self[name]
         raise AttributeError
 
+    def __dir__(self):
+        return self.keys()
+
 
 class ListField(Field, list):
     def __init__(self, name=None, parent=None, *args, **kwargs):
