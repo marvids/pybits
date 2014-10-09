@@ -13,6 +13,10 @@ except NameError:
   basestring = str
 
 
+class ReferenceException(Exception):
+    pass
+
+
 def debug(f):
     def debug_parsing(self, stream, parent):
         #print('{}({})\n\t{}'.format(self.__class__.__name__, self.name, stream[stream.pos:]))
@@ -94,15 +98,22 @@ class Sequence(Token):
                 field[token.name] = value
             elif value:
                 field.update(value)
-        if 'nameFrom' in self.kwargs:
-            name = field[self.kwargs['nameFrom']]
+
+        try:
+            refFieldName = self.kwargs['nameFrom']
+            try:
+                refField = field[refFieldName]
+            except KeyError:
+                raise ReferenceException('The field {} is not found in {}'.format(refFieldName, field))
             if 'removeNameFromField' in self.kwargs and self.kwargs['removeNameFromField']:
-                del field[self.kwargs['nameFrom']]
+                del field[refFieldName]
             if 'nameFromConversion' in self.kwargs:
-                name = self.kwargs['nameFromConversion'](name)
+                name = self.kwargs['nameFromConversion'](refField)
             else:
-                name = str(name)
+                name = str(refField)
             field = DictField(None, parent, {name: field})
+        except KeyError:
+            pass
 
         return field
 
@@ -232,6 +243,20 @@ class Enum(Bits):
             return result
         Bits.init(self, fmt, convertToEnum, enum, offset)
 
+class BitMask(Bits):
+    def init(self, fmt, mask):
+        def convertToBitMask(value, mask):
+            field = ListField()
+            index = 0
+            while value:
+                if value & 1:
+                    field.append(mask[index])
+                value = value >> 1
+                index += 1
+            return field
+
+        Bits.init(self, fmt, convertToBitMask, mask)
+
 
 class Uint(Bits):
     pass
@@ -248,19 +273,25 @@ class Bool(Enum):
        Enum.init(self, size, (False, True), *args, **kwargs)
 
 
-class Type(object):
+class String(Bits):
+    def init(self, size):
+        fmt = Fmt('bytes:{}'.format(size))
+        Bits.init(self, fmt)
+
+
+class FieldType(object):
     factor = 1
     constant = 0
     unit = ''
-    valueStr = None
+    valueTable = None
 
     def __str__(self):
-        if self.valueStr:
+        if self.valueTable:
             try:
-                if self in self.valueStr:
-                    return str(self.valueStr[self])
+                if self in self.valueTable:
+                    return str(self.valueTable[self])
             except TypeError:
-                return self.valueStr(self)
+                return self.valueTable(self)
         value = self.factor*self + self.constant
         if self.unit:
             return '{} {}'.format(value, self.unit)

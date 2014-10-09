@@ -111,8 +111,8 @@ class TestBits(unittest.TestCase):
         self.assertEqual(data.child1.parent.child2.b, 4)
 
     def testTypeValueTable(self):
-        class TestType(Type, int):
-            valueStr = {255: "INVALID"}
+        class TestType(FieldType, int):
+            valueTable = {255: "INVALID"}
         msg = Bits(8, TestType)
         self.unserialize(msg, '0x10', '16')
         self.unserialize(msg, '0xff', 'INVALID')
