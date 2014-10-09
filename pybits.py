@@ -20,7 +20,7 @@ def debug(f):
     return debug_parsing
 
 
-class Field:
+class Field(object):
     def __init__(self, name=None, parent=None):
         self.name = name
         self.parent = parent
@@ -63,7 +63,7 @@ class ListField(Field, list):
         list.__init__(self, *args, **kwargs)
 
 
-class Token:
+class Token(object):
     def __init__(self, *args, **kwargs):
         self.name = None
         if isinstance(args[0], basestring) or not args[0]:
@@ -87,14 +87,24 @@ class Token:
 class Sequence(Token):
     @debug
     def parse(self, stream, parent):
-        message = DictField(self.name, parent)
+        field = DictField(self.name, parent)
         for token in self.args:
-            value = token.parse(stream, message)
+            value = token.parse(stream, field)
             if token.name:
-                message[token.name] = value
+                field[token.name] = value
             elif value:
-                message.update(value)
-        return message
+                field.update(value)
+        if 'nameFrom' in self.kwargs:
+            name = field[self.kwargs['nameFrom']]
+            if 'removeNameFromField' in self.kwargs and self.kwargs['removeNameFromField']:
+                del field[self.kwargs['nameFrom']]
+            if 'nameFromConversion' in self.kwargs:
+                name = self.kwargs['nameFromConversion'](name)
+            else:
+                name = str(name)
+            field = DictField(None, parent, {name: field})
+
+        return field
 
 
     def __add__(self, other):
@@ -130,7 +140,7 @@ class Choice(Token):
 
 
 class Repeat(Token):
-    def init(self, *args):
+    def init(self, *args, **kwargs):
         nMap = {Fmt: lambda s, p: Bits(self.name, self.n).parse(s, p),
                 int: lambda s, p: self.n,
                 Ref: lambda s, p: p.findRef(self.n.s)}
@@ -140,16 +150,27 @@ class Repeat(Token):
             args = args[1:]
         except KeyError:
             self.getNumberOfItems = lambda stream, parent: -1
+
+        self.squash = False
+        if 'squash' in kwargs:
+            self.squash = kwargs['squash']
         self.sequence = Sequence(*args[0:])
 
     @debug
     def parse(self, stream, parent):
         n = self.getNumberOfItems(stream, parent)
-        l = ListField()
+
+        if self.squash:
+            field = DictField(self.name, parent)
+            append = lambda d: field.update(d)
+        else:
+            field = ListField()
+            append = lambda d: field.append(d)
+
         while stream.pos < stream.len and n != 0:
-            l.append(self.sequence.parse(stream, l))
+            append(self.sequence.parse(stream, field))
             n -= 1
-        return l
+        return field
 
 
 class Bits(Token):
@@ -172,7 +193,7 @@ class Bits(Token):
             return val
 
 
-class StrArg:
+class StrArg(object):
     def __init__(self, s):
         self.s = str(s)
 
@@ -227,13 +248,20 @@ class Bool(Enum):
        Enum.init(self, size, (False, True), *args, **kwargs)
 
 
-class Unit:
+class Type(object):
     factor = 1
     constant = 0
     unit = ''
-    invalid = None
+    valueStr = None
 
     def __str__(self):
-        if self == self.invalid:
-            return '\"INVALID ({})\"'.format(self.invalid)
-        return '\"{} {}\"'.format(self.factor*self + self.constant, self.unit)
+        if self.valueStr:
+            try:
+                if self in self.valueStr:
+                    return str(self.valueStr[self])
+            except TypeError:
+                return self.valueStr(self)
+        value = self.factor*self + self.constant
+        if self.unit:
+            return '{} {}'.format(value, self.unit)
+        return str(value)
