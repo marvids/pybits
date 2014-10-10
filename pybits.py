@@ -17,13 +17,6 @@ class ReferenceException(Exception):
     pass
 
 
-def debug(f):
-    def debug_parsing(self, stream, parent):
-        #print('{}({})\n\t{}'.format(self.__class__.__name__, self.name, stream[stream.pos:]))
-        return f(self, stream, parent)
-    return debug_parsing
-
-
 class Field(object):
     def __init__(self, name=None, parent=None):
         self.name = name
@@ -68,11 +61,15 @@ class ListField(Field, list):
 
 
 class Token(object):
+    debug = False
+
     def __init__(self, *args, **kwargs):
         self.name = None
         if isinstance(args[0], basestring) or not args[0]:
             self.name = args[0]
             args = args[1:]
+        self.args = args
+        self.kwargs = kwargs
         self.init(*args, **kwargs)
 
     def __call__(self, name=None):
@@ -81,16 +78,25 @@ class Token(object):
         return c
 
     def init(self, *args, **kwargs):
-        self.args = args
-        self.kwargs = kwargs
+        pass
 
-    def unserialize(self, data):
+    def getOption(self, option):
+        if option in self.kwargs:
+            return self.kwargs[option]
+        return None
+
+    def parse(self, stream, parent):
+        if self.debug:
+            print('{}({})\n\t{}'.format(self.__class__.__name__, self.name, stream[stream.pos:]))
+        return self._parse(stream, parent)
+
+    def unserialize(self, data, debug=False):
+        Token.debug = debug
         return self.parse(ConstBitStream(data), None)
 
 
 class Sequence(Token):
-    @debug
-    def parse(self, stream, parent):
+    def _parse(self, stream, parent):
         field = DictField(self.name, parent)
         for token in self.args:
             value = token.parse(stream, field)
@@ -99,21 +105,20 @@ class Sequence(Token):
             elif value:
                 field.update(value)
 
-        try:
-            refFieldName = self.kwargs['nameFrom']
+        nameFrom = self.getOption('nameFrom')
+        if nameFrom:
             try:
-                refField = field[refFieldName]
+                refField = field[nameFrom]
             except KeyError:
-                raise ReferenceException('The field {} is not found in {}'.format(refFieldName, field))
-            if 'removeNameFromField' in self.kwargs and self.kwargs['removeNameFromField']:
-                del field[refFieldName]
-            if 'nameFromConversion' in self.kwargs:
-                name = self.kwargs['nameFromConversion'](refField)
+                raise ReferenceException('The field {} is not found in {}'.format(nameFrom, field))
+            if self.getOption('removeNameFromField'):
+                del field[nameFrom]
+            nameFromConversion = self.getOption('nameFromConversion')
+            if nameFromConversion:
+                name = nameFromConversion(refField)
             else:
                 name = str(refField)
             field = DictField(None, parent, {name: field})
-        except KeyError:
-            pass
 
         return field
 
@@ -128,7 +133,6 @@ class Sequence(Token):
 class Choice(Token):
     def init(self, selector, alternatives):
         selectorMap = {Ref: lambda s, p: p.findRef(self.selector.s)}
-
         try:
             self.getSelector = selectorMap[selector.__class__]
         except KeyError:
@@ -137,8 +141,7 @@ class Choice(Token):
         self.alternatives= alternatives
         self.selector = selector
 
-    @debug
-    def parse(self, stream, parent):
+    def _parse(self, stream, parent):
         select = self.getSelector(stream, parent)
         token = self.alternatives[select]
         try:
@@ -162,16 +165,12 @@ class Repeat(Token):
         except KeyError:
             self.getNumberOfItems = lambda stream, parent: -1
 
-        self.squash = False
-        if 'squash' in kwargs:
-            self.squash = kwargs['squash']
         self.sequence = Sequence(*args[0:])
 
-    @debug
-    def parse(self, stream, parent):
+    def _parse(self, stream, parent):
         n = self.getNumberOfItems(stream, parent)
 
-        if self.squash:
+        if self.getOption('squash'):
             field = DictField(self.name, parent)
             append = lambda d: field.update(d)
         else:
@@ -195,8 +194,7 @@ class Bits(Token):
         self.converter_args = args
         self.converter_kwargs = kwargs
 
-    @debug
-    def parse(self, stream, parent):
+    def _parse(self, stream, parent):
         val = stream.read(self.fmt.s)
         if self.converter:
             return self.converter(val, *self.converter_args, **self.converter_kwargs)
@@ -219,10 +217,10 @@ class Fmt(StrArg):
 
 class Pad(Bits):
     def __init__(self, size):
-        Bits.__init__(self, size)
+        super(Pad, self).__init__(size)
 
-    def parse(self, stream, parent):
-        Bits.parse(self, stream, parent)
+    def _parse(self, stream, parent):
+        super(Pad, self)._parse(stream, parent)
 
 
 class Enum(Bits):
@@ -242,6 +240,7 @@ class Enum(Bits):
                 result = enum[index]
             return result
         Bits.init(self, fmt, convertToEnum, enum, offset)
+
 
 class BitMask(Bits):
     def init(self, fmt, mask):
