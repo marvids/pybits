@@ -90,7 +90,7 @@ class Token(object):
             print('{}({})\n\t{}'.format(self.__class__.__name__, self.name, stream[stream.pos:]))
         return self._parse(stream, parent)
 
-    def unserialize(self, data, debug=False):
+    def deserialize(self, data, debug=False):
         Token.debug = debug
         return self.parse(ConstBitStream(data), None)
 
