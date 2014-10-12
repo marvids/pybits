@@ -5,6 +5,15 @@ import json
 from pybits import *
 
 class TestBits(unittest.TestCase):
+    def testGetName(self):
+        msg = Sequence(Bits('f1', 8), conv=GetName('f1', hex))
+        field = msg.deserialize('0x10')
+        self.assertEqual(field.name, '0x10')
+
+    def testSquash(self):
+        msg = Repeat(Choice(8, {1: Bits('f1', 8), 2: Bits('f2', 8)}), conv=Squash)
+        self.deserialize(msg, '0x01100214', '{"f1": 16, "f2": 20}')
+
     def testSequence(self):
         msg = Sequence(Bits('f1', 4))
         self.deserialize(msg, '0x34', '{"f1": 3}')
@@ -59,10 +68,10 @@ class TestBits(unittest.TestCase):
         self.deserialize(msg, '0x87', '{"f1": 8, "f2": 7}')
 
     def testConverterArgs(self):
-        def convert(value, factor, offset):
-            return value*factor + offset
-        msg = Sequence(Bits('f1', 8, convert, 10, 5))
-        self.deserialize(msg, '0x05', '{"f1": 55}')
+        def convert(value):
+            return value*2
+        msg = Sequence(Bits('f1', 8, convert))
+        self.deserialize(msg, '0x05', '{"f1": 10}')
 
     def testEnumDict(self):
         msg = Sequence(Enum('flag', 1, {0: 'FALSE', 1: 'TRUE'}))
@@ -70,7 +79,7 @@ class TestBits(unittest.TestCase):
         self.deserialize(msg, '0x00', '{"flag": "FALSE"}')
 
     def testEnumTuple(self):
-        msg = Sequence(Enum('flag', 8, ('FALSE', 'TRUE'), offset=1))
+        msg = Sequence(Enum('flag', 8, ('FALSE', 'TRUE'), 1))
         self.deserialize(msg, '0x02', '{"flag": "TRUE"}')
         self.deserialize(msg, '0x01', '{"flag": "FALSE"}')
 
@@ -83,7 +92,7 @@ class TestBits(unittest.TestCase):
         self.deserialize(msg, '0xff', '-1')
 
     def testBool(self):
-        msg = Bool(None)
+        msg = Bool()
         self.deserialize(msg, '0x80', 'true')
         self.deserialize(msg, '0x00', 'false')
 
@@ -114,8 +123,8 @@ class TestBits(unittest.TestCase):
         class TestType(FieldType, int):
             valueTable = {255: "INVALID"}
         msg = Bits(8, TestType)
-        self.deserialize(msg, '0x10', '16')
-        self.deserialize(msg, '0xff', 'INVALID')
+        self.assertEqual(str(msg.deserialize('0x10')), '16')
+        self.assertEqual(str(msg.deserialize('0xff')), 'INVALID')
 
     def deserialize(self, msg, data, expected):
         self.assertEqual(json.dumps(msg.deserialize(data)), expected)

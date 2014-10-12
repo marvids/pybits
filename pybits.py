@@ -65,9 +65,16 @@ class Token(object):
 
     def __init__(self, *args, **kwargs):
         self.name = None
-        if isinstance(args[0], basestring) or not args[0]:
+        if len(args) > 0 and (isinstance(args[0], basestring) or not args[0]):
             self.name = args[0]
             args = args[1:]
+
+        self.options = {}
+        self.options['conv'] = []
+        if 'conv' in kwargs:
+            self.options['conv'] = [kwargs['conv']]
+            del kwargs['conv']
+
         self.args = args
         self.kwargs = kwargs
         self.init(*args, **kwargs)
@@ -80,15 +87,21 @@ class Token(object):
     def init(self, *args, **kwargs):
         pass
 
+    def addConverter(self, conv):
+        self.options['conv'] += [conv]
+
     def getOption(self, option):
-        if option in self.kwargs:
-            return self.kwargs[option]
+        if option in self.options:
+            return self.options[option]
         return None
 
     def parse(self, stream, parent):
         if self.debug:
             print('{}({})\n\t{}'.format(self.__class__.__name__, self.name, stream[stream.pos:]))
-        return self._parse(stream, parent)
+        field =  self._parse(stream, parent)
+        for converter in self.getOption('conv'):
+            field = converter(field)
+        return field
 
     def deserialize(self, data, debug=False):
         Token.debug = debug
@@ -106,20 +119,6 @@ class Sequence(Token):
                 field.update(value)
 
         nameFrom = self.getOption('nameFrom')
-        if nameFrom:
-            try:
-                refField = field[nameFrom]
-            except KeyError:
-                raise ReferenceException('The field {} is not found in {}'.format(nameFrom, field))
-            if self.getOption('removeNameFromField'):
-                del field[nameFrom]
-            nameFromConversion = self.getOption('nameFromConversion')
-            if nameFromConversion:
-                name = nameFromConversion(refField)
-            else:
-                name = str(refField)
-            field = DictField(None, parent, {name: field})
-
         return field
 
 
@@ -169,37 +168,25 @@ class Repeat(Token):
 
     def _parse(self, stream, parent):
         n = self.getNumberOfItems(stream, parent)
-
-        if self.getOption('squash'):
-            field = DictField(self.name, parent)
-            append = lambda d: field.update(d)
-        else:
-            field = ListField()
-            append = lambda d: field.append(d)
+        field = ListField()
 
         while stream.pos < stream.len and n != 0:
-            append(self.sequence.parse(stream, field))
+            field.append(self.sequence.parse(stream, field))
             n -= 1
         return field
 
 
 class Bits(Token):
-    def init(self, fmt, converter=None, *args, **kwargs):
+    def init(self, fmt, conv=None):
         if not isinstance(fmt, Fmt):
             self.fmt = Fmt(fmt)
         else:
             self.fmt = fmt
-
-        self.converter = converter
-        self.converter_args = args
-        self.converter_kwargs = kwargs
+        if conv:
+            self.addConverter(conv)
 
     def _parse(self, stream, parent):
-        val = stream.read(self.fmt.s)
-        if self.converter:
-            return self.converter(val, *self.converter_args, **self.converter_kwargs)
-        else:
-            return val
+        return stream.read(self.fmt.s)
 
 
 class StrArg(object):
@@ -225,21 +212,26 @@ class Pad(Bits):
 
 class Enum(Bits):
     def init(self, fmt, enum, offset=0):
-        def convertToEnum(value, enum, offset):
-            def isUndefined(index, enum):
-                if isinstance(enum, dict) and index not in enum:
-                    return True
-                if index >= len(enum) or index < 0:
-                    return True
-                return False
+        self.enum = enum
+        self.offset = offset
+        self.addConverter(self)
+        Bits.init(self, fmt)
 
-            index = value - offset
-            if isUndefined(index, enum):
-                result = '_UNDEFINED_({})'.format(value)
-            else:
-                result = enum[index]
-            return result
-        Bits.init(self, fmt, convertToEnum, enum, offset)
+    def __call__(self, value):
+        def isUndefined(index, enum):
+            if isinstance(enum, dict) and index not in enum:
+                return True
+            if index >= len(enum) or index < 0:
+                return True
+            return False
+
+        index = value - self.offset
+        if isUndefined(index, self.enum):
+            result = '_UNDEFINED_({})'.format(value)
+        else:
+            result = self.enum[index]
+        return result
+
 
 
 class BitMask(Bits):
@@ -269,7 +261,11 @@ class Int(Bits):
 
 class Bool(Enum):
     def init(self, size=1, *args, **kwargs):
-       Enum.init(self, size, (False, True), *args, **kwargs)
+        self.addConverter(self)
+        Bits.init(self, size)
+
+    def __call__(self, value):
+        return value != 0
 
 
 class String(Bits):
@@ -295,3 +291,21 @@ class FieldType(object):
         if self.unit:
             return '{} {}'.format(value, self.unit)
         return str(value)
+
+
+def Squash(field):
+    squashed = DictField(field.name, field.parent)
+    for item in field:
+        squashed.update(item)
+    return squashed
+
+
+class GetName(object):
+    def __init__(self, fieldName, conv=None):
+        self.fieldName = fieldName
+        self.conv = conv
+
+    def __call__(self, field):
+        field.name = self.conv(field[self.fieldName])
+        return field
+
