@@ -15,7 +15,7 @@ class TestBits(unittest.TestCase):
 
     def testSquashException(self):
         msg = Repeat(Choice(8, {1: Bits('f1', 8), 2: Bits('f1', 8)}), conv=Squash)
-        self.assertRaises(ConverterException, msg.deserialize, '0x01100214')
+        self.assertRaises(ConverterError, msg.deserialize, '0x01100214')
 
     def testSequence(self):
         msg = Sequence(Bits('f1', 4))
@@ -82,7 +82,7 @@ class TestBits(unittest.TestCase):
         self.deserialize(msg, '0x00', '{"flag": "FALSE"}')
 
     def testEnumTuple(self):
-        msg = Sequence(Enum('flag', 8, ('FALSE', 'TRUE'), 1))
+        msg = Sequence(Enum('flag', 8, ('FALSE', 'TRUE'), offset=1))
         self.deserialize(msg, '0x02', '{"flag": "TRUE"}')
         self.deserialize(msg, '0x01', '{"flag": "FALSE"}')
 

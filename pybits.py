@@ -13,11 +13,15 @@ except NameError:
   basestring = str
 
 
-class ReferenceException(Exception):
+class ReferenceError(Exception):
     pass
 
 
-class ConverterException(Exception):
+class ConverterError(Exception):
+    pass
+
+
+class OptionError(Exception):
     pass
 
 
@@ -29,6 +33,9 @@ class Options(object):
         self.options[name] = default
 
     def setOptions(self, options):
+        unknown = [o for o in options if o not in self.options]
+        if unknown:
+            raise OptionError("Unknown option(s): {}".format(unknown))
         self.options.update(options)
 
     def getOption(self, option):
@@ -88,16 +95,16 @@ class Token(Options):
 
     def __init__(self, *args, **options):
         super(Token, self).__init__()
+        self.addOption('conv', [])
 
         self.name = None
         if len(args) > 0 and (isinstance(args[0], basestring) or not args[0]):
             self.name = args[0]
             args = args[1:]
-
-        self.addOption('conv', [])
-        self.setOptions(options)
         self.args = args
+
         self.init(*args)
+        self.setOptions(options)
 
     def __call__(self, name=None):
         c = copy.copy(self)
@@ -221,29 +228,23 @@ class Fmt(StrArg):
 
 
 class Pad(Bits):
-    def _parse(self, stream, parent):
-        super(Pad, self)._parse(stream, parent)
+    def _parse(self, *args):
+        super(Pad, self)._parse(*args)
 
 
 class Enum(Bits):
-    def init(self, fmt, enum, offset=0):
+    def init(self, fmt, enum):
         self.enum = enum
-        self.offset = offset
+        self.addOption('offset', 0)
         Bits.init(self, fmt, self)
 
     def __call__(self, value):
-        def isUndefined(index, enum):
-            if isinstance(enum, dict) and index not in enum:
-                return True
-            if index >= len(enum) or index < 0:
-                return True
-            return False
-
-        index = value - self.offset
-        if isUndefined(index, self.enum):
-            result = '_UNDEFINED_({})'.format(value)
-        else:
+        index = value - self.getOption('offset')
+        try:
             result = self.enum[index]
+        except:
+            result = '_UNDEFINED_({})'.format(value)
+
         return result
 
 
@@ -313,7 +314,7 @@ def Squash(field):
     for item in field:
         duplicates = [i for i in item.keys() if i in squashed.keys()]
         if duplicates:
-            raise ConverterException("The field {} cannot be squashed."
+            raise ConverterError("The field {} cannot be squashed."
                 "The following fields will be lost: {}".format(field, duplicates))
         squashed.update(item)
     return squashed
