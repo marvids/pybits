@@ -17,6 +17,24 @@ class ReferenceException(Exception):
     pass
 
 
+class ConverterException(Exception):
+    pass
+
+
+class Options(object):
+    def __init__(self):
+        self.options = {}
+
+    def addOption(self, name, default):
+        self.options[name] = default
+
+    def setOptions(self, options):
+        self.options.update(options)
+
+    def getOption(self, option):
+        return self.options[option]
+
+
 class Field(object):
     def __init__(self, name=None, parent=None):
         self.name = name
@@ -45,6 +63,11 @@ class DictField(Field, collections.OrderedDict):
         Field.__init__(self, name, parent)
         collections.OrderedDict.__init__(self, *args, **kwargs)
 
+    def prepend(self, key, value):
+        items = self.items()
+        self.clear()
+        self.update([(key, value)] + items)
+
     def __getattr__(self, name):
         if name in self:
             return self[name]
@@ -60,47 +83,44 @@ class ListField(Field, list):
         list.__init__(self, *args, **kwargs)
 
 
-class Token(object):
+class Token(Options):
     debug = False
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **options):
+        super(Token, self).__init__()
+
         self.name = None
         if len(args) > 0 and (isinstance(args[0], basestring) or not args[0]):
             self.name = args[0]
             args = args[1:]
 
-        self.options = {}
-        self.options['conv'] = []
-        if 'conv' in kwargs:
-            self.options['conv'] = [kwargs['conv']]
-            del kwargs['conv']
-
+        self.addOption('conv', [])
+        self.setOptions(options)
         self.args = args
-        self.kwargs = kwargs
-        self.init(*args, **kwargs)
+        self.init(*args)
 
     def __call__(self, name=None):
         c = copy.copy(self)
         c.name = name
         return c
 
-    def init(self, *args, **kwargs):
+    def init(self, *args):
         pass
 
     def addConverter(self, conv):
         self.options['conv'] += [conv]
 
-    def getOption(self, option):
-        if option in self.options:
-            return self.options[option]
-        return None
-
     def parse(self, stream, parent):
         if self.debug:
             print('{}({})\n\t{}'.format(self.__class__.__name__, self.name, stream[stream.pos:]))
         field =  self._parse(stream, parent)
-        for converter in self.getOption('conv'):
+
+        converters = self.getOption('conv')
+        if not isinstance(converters, list):
+            converters = [converters]
+        for converter in converters:
             field = converter(field)
+
         return field
 
     def deserialize(self, data, debug=False):
@@ -117,16 +137,14 @@ class Sequence(Token):
                 field[token.name] = value
             elif value:
                 field.update(value)
-
-        nameFrom = self.getOption('nameFrom')
         return field
 
 
     def __add__(self, other):
         args = self.args + other.args
-        kwargs = self.kwargs
-        kwargs.update(other.kwargs)
-        return Sequence(*args, **kwargs)
+        options = self.options
+        options.update(other.options)
+        return Sequence(*args, **options)
 
 
 class Choice(Token):
@@ -153,7 +171,7 @@ class Choice(Token):
 
 
 class Repeat(Token):
-    def init(self, *args, **kwargs):
+    def init(self, *args):
         nMap = {Fmt: lambda s, p: Bits(self.name, self.n).parse(s, p),
                 int: lambda s, p: self.n,
                 Ref: lambda s, p: p.findRef(self.n.s)}
@@ -203,9 +221,6 @@ class Fmt(StrArg):
 
 
 class Pad(Bits):
-    def __init__(self, size):
-        super(Pad, self).__init__(size)
-
     def _parse(self, stream, parent):
         super(Pad, self)._parse(stream, parent)
 
@@ -214,8 +229,7 @@ class Enum(Bits):
     def init(self, fmt, enum, offset=0):
         self.enum = enum
         self.offset = offset
-        self.addConverter(self)
-        Bits.init(self, fmt)
+        Bits.init(self, fmt, self)
 
     def __call__(self, value):
         def isUndefined(index, enum):
@@ -236,17 +250,18 @@ class Enum(Bits):
 
 class BitMask(Bits):
     def init(self, fmt, mask):
-        def convertToBitMask(value, mask):
-            field = ListField()
-            index = 0
-            while value:
-                if value & 1:
-                    field.append(mask[index])
-                value = value >> 1
-                index += 1
-            return field
+        self.mask = mask
+        Bits.init(self, fmt, self)
 
-        Bits.init(self, fmt, convertToBitMask, mask)
+    def __call__(self, value):
+        field = ListField()
+        index = 0
+        while value:
+            if value & 1:
+                field.append(self.mask[index])
+            value = value >> 1
+            index += 1
+        return field
 
 
 class Uint(Bits):
@@ -254,13 +269,13 @@ class Uint(Bits):
 
 
 class Int(Bits):
-    def init(self, size, *args, **kwargs):
+    def init(self, size, *args):
         fmt = Fmt('int:{}'.format(size))
-        Bits.init(self, fmt, *args, **kwargs)
+        Bits.init(self, fmt, *args)
 
 
 class Bool(Enum):
-    def init(self, size=1, *args, **kwargs):
+    def init(self, size=1, *args):
         self.addConverter(self)
         Bits.init(self, size)
 
@@ -296,16 +311,48 @@ class FieldType(object):
 def Squash(field):
     squashed = DictField(field.name, field.parent)
     for item in field:
+        duplicates = [i for i in item.keys() if i in squashed.keys()]
+        if duplicates:
+            raise ConverterException("The field {} cannot be squashed."
+                "The following fields will be lost: {}".format(field, duplicates))
         squashed.update(item)
     return squashed
 
 
-class GetName(object):
-    def __init__(self, fieldName, conv=None):
-        self.fieldName = fieldName
-        self.conv = conv
+class GetName(Options):
+    def __init__(self, ref, conv=None, **options):
+        super(GetName, self).__init__()
+        self.ref = ref
+        self.addOption('remove', True)
+        self.addOption('conv', conv)
+        self.setOptions(options)
 
     def __call__(self, field):
-        field.name = self.conv(field[self.fieldName])
-        return field
+        name = field[self.ref]
+        conv = self.getOption('conv')
+        if conv:
+            name = conv(name)
+        if self.getOption('remove'):
+            del field[self.ref]
+        return DictField(None, field.parent, {name: field})
 
+
+class AddField(Options):
+    def __init__(self, name, ref, conv=None, **options):
+        super(AddField, self).__init__()
+        self.name = name
+        self.ref = ref
+        self.addOption('conv', conv)
+        self.addOption('onTop', False)
+        self.setOptions(options)
+
+    def __call__(self, field):
+        value = field[self.ref]
+        conv = self.getOption('conv')
+        if conv:
+            value = conv(value)
+        if self.getOption('onTop'):
+            field.prepend(self.name, value)
+        else:
+            field[self.name] = value
+        return field

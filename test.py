@@ -6,13 +6,16 @@ from pybits import *
 
 class TestBits(unittest.TestCase):
     def testGetName(self):
-        msg = Sequence(Bits('f1', 8), conv=GetName('f1', hex))
-        field = msg.deserialize('0x10')
-        self.assertEqual(field.name, '0x10')
+        msg = Sequence(Bits('f1', 8), conv=GetName('f1', conv=hex, remove=False))
+        self.deserialize(msg, '0x10', '{"0x10": {"f1": 16}}')
 
     def testSquash(self):
         msg = Repeat(Choice(8, {1: Bits('f1', 8), 2: Bits('f2', 8)}), conv=Squash)
         self.deserialize(msg, '0x01100214', '{"f1": 16, "f2": 20}')
+
+    def testSquashException(self):
+        msg = Repeat(Choice(8, {1: Bits('f1', 8), 2: Bits('f1', 8)}), conv=Squash)
+        self.assertRaises(ConverterException, msg.deserialize, '0x01100214')
 
     def testSequence(self):
         msg = Sequence(Bits('f1', 4))
