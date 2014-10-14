@@ -25,6 +25,16 @@ class OptionError(Exception):
     pass
 
 
+class Ref(object):
+    def __init__(self, ref):
+        self.ref = ref
+
+
+class Fmt(object):
+    def __init__(self, fmt):
+        self.fmt = str(fmt)
+
+
 class Options(object):
     def __init__(self):
         self.options = {}
@@ -32,17 +42,22 @@ class Options(object):
     def addOption(self, name, default):
         self.options[name] = default
 
-    def setOptions(self, options):
+    def initOptions(self, options):
         unknown = [o for o in options if o not in self.options]
         if unknown:
             raise OptionError("Unknown option(s): {}".format(unknown))
         self.options.update(options)
+
+    def appendOption(self, option, value):
+        self.options[option] += [value]
 
     def getOption(self, option):
         return self.options[option]
 
 
 class Field(object):
+    indent = 4
+
     def __init__(self, name=None, parent=None):
         self.name = name
         self.parent = parent
@@ -51,7 +66,7 @@ class Field(object):
         s = ''
         if self.name:
             s += self.name + ' = '
-        return s + json.dumps(self, indent=4)
+        return s + json.dumps(self, indent=self.indent)
 
     def findRef(self, reference):
         if reference.startswith('../'):
@@ -101,21 +116,13 @@ class Token(Options):
         if len(args) > 0 and (isinstance(args[0], basestring) or not args[0]):
             self.name = args[0]
             args = args[1:]
-        self.args = args
-
         self.init(*args)
-        self.setOptions(options)
+        self.initOptions(options)
 
     def __call__(self, name=None):
         c = copy.copy(self)
         c.name = name
         return c
-
-    def init(self, *args):
-        pass
-
-    def addConverter(self, conv):
-        self.options['conv'] += [conv]
 
     def parse(self, stream, parent):
         if self.debug:
@@ -136,9 +143,12 @@ class Token(Options):
 
 
 class Sequence(Token):
+    def init(self, *tokens):
+        self.tokens = tokens
+
     def _parse(self, stream, parent):
         field = DictField(self.name, parent)
-        for token in self.args:
+        for token in self.tokens:
             value = token.parse(stream, field)
             if token.name:
                 field[token.name] = value
@@ -148,15 +158,15 @@ class Sequence(Token):
 
 
     def __add__(self, other):
-        args = self.args + other.args
+        tokens = self.tokens + other.tokens
         options = self.options
         options.update(other.options)
-        return Sequence(*args, **options)
+        return Sequence(*tokens, **options)
 
 
 class Choice(Token):
     def init(self, selector, alternatives):
-        selectorMap = {Ref: lambda s, p: p.findRef(self.selector.s)}
+        selectorMap = {Ref: lambda s, p: p.findRef(self.selector.ref)}
         try:
             self.getSelector = selectorMap[selector.__class__]
         except KeyError:
@@ -181,7 +191,7 @@ class Repeat(Token):
     def init(self, *args):
         nMap = {Fmt: lambda s, p: Bits(self.name, self.n).parse(s, p),
                 int: lambda s, p: self.n,
-                Ref: lambda s, p: p.findRef(self.n.s)}
+                Ref: lambda s, p: p.findRef(self.n.ref)}
         try:
             self.getNumberOfItems = nMap[args[0].__class__]
             self.n = args[0]
@@ -208,23 +218,10 @@ class Bits(Token):
         else:
             self.fmt = fmt
         if conv:
-            self.addConverter(conv)
+            self.appendOption('conv', conv)
 
     def _parse(self, stream, parent):
-        return stream.read(self.fmt.s)
-
-
-class StrArg(object):
-    def __init__(self, s):
-        self.s = str(s)
-
-
-class Ref(StrArg):
-    pass
-
-
-class Fmt(StrArg):
-    pass
+        return stream.read(self.fmt.fmt)
 
 
 class Pad(Bits):
@@ -236,9 +233,9 @@ class Enum(Bits):
     def init(self, fmt, enum):
         self.enum = enum
         self.addOption('offset', 0)
-        Bits.init(self, fmt, self)
+        Bits.init(self, fmt, self.toEnum)
 
-    def __call__(self, value):
+    def toEnum(self, value):
         index = value - self.getOption('offset')
         try:
             result = self.enum[index]
@@ -248,13 +245,12 @@ class Enum(Bits):
         return result
 
 
-
 class BitMask(Bits):
     def init(self, fmt, mask):
         self.mask = mask
-        Bits.init(self, fmt, self)
+        Bits.init(self, fmt, self.toBitmask)
 
-    def __call__(self, value):
+    def toBitmask(self, value):
         field = ListField()
         index = 0
         while value:
@@ -277,10 +273,10 @@ class Int(Bits):
 
 class Bool(Enum):
     def init(self, size=1, *args):
-        self.addConverter(self)
+        self.appendOption('conv', self.toBool)
         Bits.init(self, size)
 
-    def __call__(self, value):
+    def toBool(self, value):
         return value != 0
 
 
@@ -326,7 +322,7 @@ class GetName(Options):
         self.ref = ref
         self.addOption('remove', True)
         self.addOption('conv', conv)
-        self.setOptions(options)
+        self.initOptions(options)
 
     def __call__(self, field):
         name = field[self.ref]
@@ -345,7 +341,7 @@ class AddField(Options):
         self.ref = ref
         self.addOption('conv', conv)
         self.addOption('onTop', False)
-        self.setOptions(options)
+        self.initOptions(options)
 
     def __call__(self, field):
         value = field[self.ref]

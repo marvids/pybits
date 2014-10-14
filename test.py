@@ -5,6 +5,9 @@ import json
 from pybits import *
 
 class TestBits(unittest.TestCase):
+    def setUp(self):
+        Field.indent = None
+
     def testGetName(self):
         msg = Sequence(Bits('f1', 8), conv=GetName('f1', conv=hex, remove=False))
         self.deserialize(msg, '0x10', '{"0x10": {"f1": 16}}')
@@ -96,8 +99,8 @@ class TestBits(unittest.TestCase):
 
     def testBool(self):
         msg = Bool()
-        self.deserialize(msg, '0x80', 'true')
-        self.deserialize(msg, '0x00', 'false')
+        self.deserialize(msg, '0x80', 'True')
+        self.deserialize(msg, '0x00', 'False')
 
     def testComposite(self):
         msg = Sequence(
@@ -126,11 +129,11 @@ class TestBits(unittest.TestCase):
         class TestType(FieldType, int):
             valueTable = {255: "INVALID"}
         msg = Bits(8, TestType)
-        self.assertEqual(str(msg.deserialize('0x10')), '16')
-        self.assertEqual(str(msg.deserialize('0xff')), 'INVALID')
+        self.deserialize(msg, '0x10', '16')
+        self.deserialize(msg, '0xff', 'INVALID')
 
     def deserialize(self, msg, data, expected):
-        self.assertEqual(json.dumps(msg.deserialize(data)), expected)
+        self.assertEqual(str(msg.deserialize(data)), expected)
 
 if __name__ == '__main__':
     unittest.main()
