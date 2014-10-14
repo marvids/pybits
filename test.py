@@ -13,11 +13,11 @@ class TestBits(unittest.TestCase):
         self.deserialize(msg, '0x10', '{"0x10": {"f1": 16}}')
 
     def testSquash(self):
-        msg = Repeat(Choice(8, {1: Bits('f1', 8), 2: Bits('f2', 8)}), conv=Squash)
+        msg = Repeat(Choice(Fmt(8), {1: Bits('f1', 8), 2: Bits('f2', 8)}), conv=Squash)
         self.deserialize(msg, '0x01100214', '{"f1": 16, "f2": 20}')
 
     def testSquashException(self):
-        msg = Repeat(Choice(8, {1: Bits('f1', 8), 2: Bits('f1', 8)}), conv=Squash)
+        msg = Repeat(Choice(Fmt(8), {1: Bits('f1', 8), 2: Bits('f1', 8)}), conv=Squash)
         self.assertRaises(ConverterError, msg.deserialize, '0x01100214')
 
     def testSequence(self):
@@ -29,7 +29,7 @@ class TestBits(unittest.TestCase):
         self.deserialize(msg, '0xf8', '{"f1": 8}')
 
     def testChoice(self):
-        msg = Choice(4, {4: Sequence(Bits('f1', 4)), 5: Sequence(Bits('f2', 4))})
+        msg = Choice(Fmt(4), {4: Sequence(Bits('f1', 4)), 5: Sequence(Bits('f2', 4))})
         self.deserialize(msg, '0x48', '{"f1": 8}')
         self.deserialize(msg, '0x52', '{"f2": 2}')
 
@@ -107,7 +107,7 @@ class TestBits(unittest.TestCase):
                 Bits('f1', 8),
                 Pad(8),
                 Sequence('f2', Bits('g1', 4)),
-                Repeat('f3', Choice(4, {6: Sequence(Bits('a1', 8), Bits('a2', 8)),
+                Repeat('f3', Choice(Fmt(4), {6: Sequence(Bits('a1', 8), Bits('a2', 8)),
                                         7: Sequence(Bits('a3', 4), Bits('a4', 4))})
                 )
             )

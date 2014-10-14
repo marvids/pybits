@@ -164,19 +164,29 @@ class Sequence(Token):
         return Sequence(*tokens, **options)
 
 
-class Choice(Token):
-    def init(self, selector, alternatives):
-        selectorMap = {Ref: lambda s, p: p.findRef(self.selector.ref)}
-        try:
-            self.getSelector = selectorMap[selector.__class__]
-        except KeyError:
-            self.getSelector = lambda s, p: Bits(self.name, self.selector).parse(s, p)
+class Parametric(Token):
+    def init(self, *args):
+        if isinstance(args[0], Token):
+            self.getParameter = lambda s, p: None
+        else:
+            arg = args[0]
+            args = args[1:]
+            try:
+                argMap = {Fmt: lambda s, p: Bits(self.name, arg).parse(s, p),
+                        Ref: lambda s, p: p.findRef(arg.ref)}
+                self.getParameter = argMap[arg.__class__]
+            except KeyError:
+                self.getParameter = lambda s, p: arg
+        return args
 
+
+class Choice(Parametric):
+    def init(self, selector, alternatives):
+        super(Choice, self).init(selector)
         self.alternatives= alternatives
-        self.selector = selector
 
     def _parse(self, stream, parent):
-        select = self.getSelector(stream, parent)
+        select = self.getParameter(stream, parent)
         token = self.alternatives[select]
         try:
             value = token.parse(stream, parent)
@@ -187,27 +197,19 @@ class Choice(Token):
         return value
 
 
-class Repeat(Token):
+class Repeat(Parametric):
     def init(self, *args):
-        nMap = {Fmt: lambda s, p: Bits(self.name, self.n).parse(s, p),
-                int: lambda s, p: self.n,
-                Ref: lambda s, p: p.findRef(self.n.ref)}
-        try:
-            self.getNumberOfItems = nMap[args[0].__class__]
-            self.n = args[0]
-            args = args[1:]
-        except KeyError:
-            self.getNumberOfItems = lambda stream, parent: -1
-
-        self.sequence = Sequence(*args[0:])
+        args = super(Repeat, self).init(*args)
+        self.sequence = Sequence(*args)
 
     def _parse(self, stream, parent):
-        n = self.getNumberOfItems(stream, parent)
+        n = self.getParameter(stream, parent)
         field = ListField()
 
-        while stream.pos < stream.len and n != 0:
+        while stream.pos < stream.len and (n != 0 or n is None):
             field.append(self.sequence.parse(stream, field))
-            n -= 1
+            if n:
+                n -= 1
         return field
 
 
